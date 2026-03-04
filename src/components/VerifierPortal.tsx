@@ -56,11 +56,21 @@ const VerifierPortal = () => {
   return (
     <div className="space-y-6">
       {/* Search Card */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 cyber-border-glow">
-        <h3 className="font-display text-lg font-semibold mb-4 flex items-center gap-2">
-          <QrCode className="w-5 h-5 text-cyber-glow" />
-          Verify QR / Code
-        </h3>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="glass-panel-elevated rounded-2xl p-6 sm:p-8">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="p-2.5 rounded-lg bg-gradient-to-br from-primary/20 to-accent/10 border border-primary/15">
+            <QrCode className="w-5 h-5 text-cyber-glow" />
+          </div>
+          <div>
+            <h3 className="font-display text-base sm:text-lg font-semibold tracking-wider">
+              Verify QR / Code
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Authenticate credentials on-chain</p>
+          </div>
+        </div>
+
+        <div className="section-divider mb-5" />
 
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
@@ -70,13 +80,15 @@ const VerifierPortal = () => {
             <input type="text" value={code} onChange={(e) => setCode(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleVerify()}
               placeholder="e.g. PV-2025-00847"
-              className="flex-1 bg-muted/50 border border-border rounded-md px-4 py-3 text-foreground font-mono text-sm focus:outline-none focus:border-cyber-glow transition-colors" />
+              className="flex-1 glass-input px-4 py-3 text-foreground font-mono text-sm" />
             <button onClick={handleVerify} disabled={!code.trim() || state === "searching"}
-              className="px-6 py-3 rounded-md bg-primary hover:bg-primary/80 text-primary-foreground font-display font-semibold tracking-wider uppercase transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed hover:shadow-[0_0_20px_hsl(195,100%,50%,0.3)]">
-              {state === "searching" ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+              className="px-6 py-3 glow-btn text-sm">
+              <span className="relative z-10">
+                {state === "searching" ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+              </span>
             </button>
           </div>
-          <p className="text-xs text-muted-foreground font-mono">Enter the Certificate ID from the admin panel</p>
+          <p className="text-[10px] text-muted-foreground font-mono tracking-wider">Enter the Certificate ID from the admin panel</p>
         </div>
       </motion.div>
 
@@ -84,67 +96,69 @@ const VerifierPortal = () => {
       <AnimatePresence mode="wait">
         {state === "searching" && (
           <motion.div key="searching" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-            className="glass-card p-8 flex flex-col items-center space-y-3">
+            className="glass-panel-elevated rounded-2xl p-10 flex flex-col items-center space-y-4">
             <div className="relative">
-              <div className="w-16 h-16 rounded-full border-2 border-cyber-glow/30 border-t-cyber-glow animate-spin" />
+              <div className="w-14 h-14 rounded-full border-2 border-cyber-glow/20 border-t-cyber-glow animate-spin" />
             </div>
             <p className="font-display text-sm tracking-wider cyber-glow">Querying Polygon Ledger...</p>
-            <p className="text-xs text-muted-foreground font-mono">Verifying on-chain data integrity</p>
+            <p className="text-[10px] text-muted-foreground font-mono tracking-wider">Verifying on-chain data integrity</p>
           </motion.div>
         )}
 
         {state === "verified" && result && (
           <motion.div key="verified" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-            className="glass-card p-6 space-y-5">
-            <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }}
-              className="flex items-center gap-3 p-4 rounded-md bg-success/10 border border-success/30">
+            className="glass-panel-elevated rounded-2xl p-6 sm:p-8 space-y-6">
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }}
+              className="flex items-center gap-3 p-5 rounded-xl bg-success/8 border border-success/20">
               <ShieldCheck className="w-10 h-10 text-success flex-shrink-0" />
               <div>
-                <p className="font-display font-bold text-lg text-success">Blockchain Verified ✓</p>
-                <p className="text-sm text-muted-foreground">This credential is authentic and recorded on Polygon</p>
+                <p className="font-display font-bold text-lg text-success tracking-wider">Blockchain Verified ✓</p>
+                <p className="text-sm text-muted-foreground mt-0.5">This credential is authentic and recorded on Polygon</p>
               </div>
             </motion.div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-3">
-                <div className="p-3 rounded-md bg-muted/20 border border-border/50">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1"><Building className="w-3 h-3" /> Issuer</div>
-                  <p className="font-medium">{result.issuer}</p>
-                </div>
-                <div className="p-3 rounded-md bg-muted/20 border border-border/50">
-                  <p className="text-xs text-muted-foreground mb-1">Recipient</p>
-                  <p className="font-medium">{result.name}</p>
-                </div>
-                <div className="p-3 rounded-md bg-muted/20 border border-border/50">
-                  <p className="text-xs text-muted-foreground mb-1">Credential</p>
-                  <p className="font-medium">{result.degree}</p>
-                </div>
-                <div className="p-3 rounded-md bg-muted/20 border border-border/50">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1"><CalendarDays className="w-3 h-3" /> Issue Date</div>
-                  <p className="font-medium">{result.date}</p>
-                </div>
+                {[
+                  { icon: Building, label: "Issuer", value: result.issuer },
+                  { label: "Recipient", value: result.name },
+                  { label: "Credential", value: result.degree },
+                  { icon: CalendarDays, label: "Issue Date", value: result.date },
+                ].map((item) => (
+                  <div key={item.label} className="info-block">
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono tracking-wider uppercase mb-1">
+                      {item.icon && <item.icon className="w-3 h-3" />}
+                      {item.label}
+                    </div>
+                    <p className="font-medium text-sm">{item.value}</p>
+                  </div>
+                ))}
               </div>
 
               <div className="space-y-3">
-                <div className="p-3 rounded-md bg-muted/20 border border-border/50">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1"><Hash className="w-3 h-3" /> Transaction Hash</div>
-                  <p className="font-mono text-xs text-cyber-glow break-all">{result.txHash}</p>
+                <div className="info-block">
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono tracking-wider uppercase mb-1">
+                    <Hash className="w-3 h-3" /> Transaction Hash
+                  </div>
+                  <p className="font-mono text-xs text-cyber-glow/80 break-all">{result.txHash}</p>
                 </div>
                 {result.blockNumber && (
-                  <div className="p-3 rounded-md bg-muted/20 border border-border/50">
-                    <p className="text-xs text-muted-foreground mb-1">Block Number</p>
+                  <div className="info-block">
+                    <p className="text-[10px] text-muted-foreground font-mono tracking-wider uppercase mb-1">Block Number</p>
                     <p className="font-mono text-sm text-cyber-glow">{result.blockNumber.toLocaleString()}</p>
                   </div>
                 )}
-                <div className="flex items-center justify-center p-4 rounded-md bg-muted/20 border border-border/50">
-                  <QRCodeSVG value={`https://proofvault.io/verify/${result.certificateId}`}
-                    size={140} bgColor="transparent" fgColor="hsl(195, 100%, 50%)" level="M" />
+                <div className="info-block flex items-center justify-center p-6">
+                  <div className="p-3 rounded-xl bg-background/30">
+                    <QRCodeSVG value={`https://proofvault.io/verify/${result.certificateId}`}
+                      size={130} bgColor="transparent" fgColor="hsl(195, 100%, 60%)" level="M" />
+                  </div>
                 </div>
               </div>
             </div>
 
             <button onClick={reset}
-              className="w-full py-2 rounded-md border border-border hover:border-cyber-glow/50 text-foreground font-display text-sm tracking-wider uppercase transition-all duration-300">
+              className="w-full py-3 rounded-xl border border-border/60 hover:border-cyber-glow/30 text-foreground font-display text-sm tracking-wider uppercase transition-all duration-300 hover:bg-muted/20">
               Verify Another
             </button>
           </motion.div>
@@ -152,16 +166,16 @@ const VerifierPortal = () => {
 
         {state === "invalid" && (
           <motion.div key="invalid" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-            className="glass-card p-6 space-y-4">
-            <div className="flex items-center gap-3 p-4 rounded-md bg-destructive/10 border border-destructive/30">
+            className="glass-panel-elevated rounded-2xl p-6 sm:p-8 space-y-5">
+            <div className="flex items-center gap-3 p-5 rounded-xl bg-destructive/8 border border-destructive/20">
               <ShieldX className="w-10 h-10 text-destructive flex-shrink-0" />
               <div>
-                <p className="font-display font-bold text-lg text-destructive">Not Found on Blockchain</p>
-                <p className="text-sm text-muted-foreground">No matching credential exists on the Polygon ledger for "{code}"</p>
+                <p className="font-display font-bold text-lg text-destructive tracking-wider">Not Found on Blockchain</p>
+                <p className="text-sm text-muted-foreground mt-0.5">No matching credential exists on the Polygon ledger for "{code}"</p>
               </div>
             </div>
             <button onClick={reset}
-              className="w-full py-2 rounded-md border border-border hover:border-cyber-glow/50 text-foreground font-display text-sm tracking-wider uppercase transition-all duration-300">
+              className="w-full py-3 rounded-xl border border-border/60 hover:border-cyber-glow/30 text-foreground font-display text-sm tracking-wider uppercase transition-all duration-300 hover:bg-muted/20">
               Try Again
             </button>
           </motion.div>
