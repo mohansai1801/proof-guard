@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Unlock, Clock, ExternalLink, ShieldCheck, Loader2, Eye, Key, Copy, LogIn, LogOut, FileText } from "lucide-react";
+import { Clock, ExternalLink, ShieldCheck, Key, Copy, LogIn, LogOut, FileText, ArrowLeft } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "@/hooks/use-toast";
 import { generateOTP, getOTPTimeRemaining } from "@/lib/otp";
@@ -23,15 +23,9 @@ const StudentView = () => {
   const [loginError, setLoginError] = useState("");
   const [myCerts, setMyCerts] = useState<MockCertificate[]>([]);
   const [selectedCert, setSelectedCert] = useState<MockCertificate | null>(null);
-
-  // Unlock state per selected cert
-  const [code, setCode] = useState("");
-  const [unlocked, setUnlocked] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(TIMER_DURATION);
-  const [error, setError] = useState(false);
   const [currentOTP, setCurrentOTP] = useState("");
   const [otpTimeLeft, setOtpTimeLeft] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(TIMER_DURATION);
 
   // Re-sync certs from store
   useEffect(() => {
@@ -41,7 +35,45 @@ const StudentView = () => {
     return subscribe(update);
   }, [loggedIn, studentId]);
 
-  // Login handler
+  // When a certificate is selected, immediately start session + OTP
+  useEffect(() => {
+    if (!selectedCert) return;
+    startSession(selectedCert.certificateId);
+    setTimeLeft(TIMER_DURATION);
+    return () => {
+      endSession(selectedCert.certificateId);
+    };
+  }, [selectedCert]);
+
+  // 30-minute countdown
+  useEffect(() => {
+    if (!selectedCert) return;
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          goBack();
+          toast({ title: "Session Expired", description: "Your 30-minute access window has closed." });
+          return TIMER_DURATION;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [selectedCert]);
+
+  // OTP rotation
+  useEffect(() => {
+    if (!selectedCert) return;
+    const updateOTP = () => {
+      setCurrentOTP(generateOTP(selectedCert.certificateId, selectedCert.authCode));
+      setOtpTimeLeft(getOTPTimeRemaining());
+    };
+    updateOTP();
+    const interval = setInterval(updateOTP, 1000);
+    return () => clearInterval(interval);
+  }, [selectedCert]);
+
   const handleLogin = () => {
     if (!studentId.trim() || !passcode.trim()) return;
     if (validateStudentLogin(studentId, passcode)) {
@@ -54,73 +86,17 @@ const StudentView = () => {
   };
 
   const handleLogout = () => {
-    if (selectedCert && unlocked) endSession(selectedCert.certificateId);
+    if (selectedCert) endSession(selectedCert.certificateId);
     setLoggedIn(false);
     setStudentId("");
     setPasscode("");
     setSelectedCert(null);
-    setUnlocked(false);
-    setCode("");
   };
 
-  // Unlock certificate with its auth code
-  const handleUnlock = () => {
-    if (!selectedCert || code.length !== 6) return;
-    setLoading(true);
-    setError(false);
-    setTimeout(() => {
-      if (code === selectedCert.authCode) {
-        setUnlocked(true);
-        setTimeLeft(TIMER_DURATION);
-        startSession(selectedCert.certificateId);
-        toast({ title: "Access Granted", description: "Certificate unlocked — 30 min session active" });
-      } else {
-        setError(true);
-        setTimeout(() => setError(false), 2000);
-      }
-      setLoading(false);
-    }, 800);
-  };
-
-  const lockCertificate = useCallback(() => {
-    if (selectedCert) endSession(selectedCert.certificateId);
-    setUnlocked(false);
-    setCode("");
-    setTimeLeft(TIMER_DURATION);
-    setCurrentOTP("");
-  }, [selectedCert]);
-
-  // Back to list
   const goBack = () => {
-    if (unlocked && selectedCert) endSession(selectedCert.certificateId);
+    if (selectedCert) endSession(selectedCert.certificateId);
     setSelectedCert(null);
-    setUnlocked(false);
-    setCode("");
   };
-
-  // 30-minute countdown
-  useEffect(() => {
-    if (!unlocked) return;
-    const interval = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) { lockCertificate(); return TIMER_DURATION; }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [unlocked, lockCertificate]);
-
-  // OTP rotation
-  useEffect(() => {
-    if (!unlocked || !selectedCert) return;
-    const updateOTP = () => {
-      setCurrentOTP(generateOTP(selectedCert.certificateId, selectedCert.authCode));
-      setOtpTimeLeft(getOTPTimeRemaining());
-    };
-    updateOTP();
-    const interval = setInterval(updateOTP, 1000);
-    return () => clearInterval(interval);
-  }, [unlocked, selectedCert]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -216,9 +192,7 @@ const StudentView = () => {
                       <p className="font-semibold">{cert.degree}</p>
                       <p className="text-xs text-muted-foreground mt-1">{cert.institution} • {cert.issueDate}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="badge-success text-[10px]"><ShieldCheck className="w-3 h-3" /> Anchored</span>
-                    </div>
+                    <span className="badge-success text-[10px]"><ShieldCheck className="w-3 h-3" /> Anchored</span>
                   </div>
                   <p className="text-[10px] font-mono text-muted-foreground mt-2">{cert.certificateId}</p>
                 </motion.button>
@@ -230,137 +204,77 @@ const StudentView = () => {
     );
   }
 
-  // --- SELECTED CERTIFICATE VIEW (with unlock) ---
+  // --- SELECTED CERTIFICATE (immediately visible + OTP shown) ---
   const certificate = selectedCert;
 
   return (
     <div className="space-y-6">
-      {/* Back button */}
       <button onClick={goBack} className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
-        ← Back to certificates
+        <ArrowLeft className="w-3 h-3" /> Back to certificates
       </button>
 
-      {/* Auth Code Card */}
+      {/* Session timer bar */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-        className="glass-surface-elevated p-6 sm:p-8">
-        <div className="flex items-center gap-3 mb-5">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 ${
-            unlocked
-              ? "bg-success/15 border border-success/20"
-              : "bg-gradient-to-br from-highlight/15 to-highlight-secondary/10 border border-highlight/15"
-          }`}>
-            {unlocked ? <Unlock className="w-5 h-5 text-success" /> : <Lock className="w-5 h-5 text-highlight" />}
+        className="glass-surface-elevated p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            <ShieldCheck className="w-5 h-5 text-success" />
+            <span className="text-sm font-semibold text-success">Temporary Access Active</span>
           </div>
-          <div>
-            <h3 className="font-heading text-lg font-semibold">
-              {unlocked ? "Temporary Access Active" : "Certificate Locked"}
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {unlocked ? "Your certificate is visible to verifiers" : "Enter your 6-digit auth code to reveal certificate"}
-            </p>
+          <div className="flex items-center gap-2 text-sm font-mono">
+            <Clock className="w-4 h-4 text-warning" />
+            <span className={`${timerPercent < 20 ? "text-destructive" : "text-warning"} font-semibold`}>
+              {formatTime(timeLeft)}
+            </span>
           </div>
         </div>
-
-        <div className="divider-gradient mb-5" />
-
-        {!unlocked ? (
-          <div className="space-y-4">
-            <div className="flex gap-3">
-              <input type="text" maxLength={6} value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
-                placeholder="● ● ● ● ● ●"
-                className={`flex-1 input-mono text-center text-xl tracking-[0.5em] py-4 ${
-                  error ? "!border-destructive !shadow-destructive/10" : ""
-                }`}
-              />
-              <button onClick={handleUnlock} disabled={code.length !== 6 || loading}
-                className="px-8 btn-primary">
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Unlock"}
-              </button>
-            </div>
-            <AnimatePresence>
-              {error && (
-                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                  className="badge-error w-fit">
-                  ✕ Invalid authentication code
-                </motion.div>
-              )}
-            </AnimatePresence>
-            <p className="text-[11px] text-muted-foreground">
-              💡 Enter the auth code provided by your university. Access expires after 30 minutes.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-4 rounded-xl bg-success/5 border border-success/15">
-              <div className="flex items-center gap-2.5">
-                <ShieldCheck className="w-5 h-5 text-success" />
-                <span className="text-sm font-semibold text-success">Temporary Access Active</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 text-sm font-mono">
-                  <Clock className="w-4 h-4 text-warning" />
-                  <span className={`${timerPercent < 20 ? "text-destructive" : "text-warning"} font-semibold`}>
-                    {formatTime(timeLeft)}
-                  </span>
-                </div>
-                <button onClick={lockCertificate} className="text-xs px-3 py-1.5 btn-ghost !rounded-lg">Re-lock</button>
-              </div>
-            </div>
-            <div className="w-full h-1 rounded-full bg-muted overflow-hidden">
-              <motion.div className="h-full rounded-full bg-gradient-to-r from-success to-success/50"
-                initial={{ width: "100%" }} animate={{ width: `${timerPercent}%` }} transition={{ duration: 1 }} />
-            </div>
-          </div>
-        )}
+        <div className="w-full h-1 rounded-full bg-muted overflow-hidden">
+          <motion.div className="h-full rounded-full bg-gradient-to-r from-success to-success/50"
+            initial={{ width: "100%" }} animate={{ width: `${timerPercent}%` }} transition={{ duration: 1 }} />
+        </div>
       </motion.div>
 
-      {/* OTP Card */}
-      {unlocked && (
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-          className="glass-surface-elevated p-6 sm:p-8">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-warning/15 to-warning/5 border border-warning/20 flex items-center justify-center">
-              <Key className="w-5 h-5 text-warning" />
+      {/* OTP Card — shown immediately */}
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+        className="glass-surface-elevated p-6 sm:p-8">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-warning/15 to-warning/5 border border-warning/20 flex items-center justify-center">
+            <Key className="w-5 h-5 text-warning" />
+          </div>
+          <div>
+            <h3 className="font-heading text-lg font-semibold">Verification OTP</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Share this code with the verifier when asked</p>
+          </div>
+        </div>
+        <div className="divider-gradient mb-5" />
+        <div className="text-center space-y-4">
+          <div className="flex items-center justify-center gap-3">
+            <p className="font-mono text-4xl tracking-[0.6em] text-warning font-bold">{currentOTP}</p>
+            <button onClick={() => copyToClipboard(currentOTP, "OTP")}
+              className="p-2 rounded-lg hover:bg-warning/10 transition-colors">
+              <Copy className="w-4 h-4 text-warning/70" />
+            </button>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-center gap-2 text-sm">
+              <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="font-mono text-muted-foreground">Refreshes in {formatTime(otpTimeLeft)}</span>
             </div>
-            <div>
-              <h3 className="font-heading text-lg font-semibold">Verification OTP</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Share this code with the verifier when asked</p>
+            <div className="w-48 mx-auto h-1 rounded-full bg-muted overflow-hidden">
+              <motion.div className="h-full rounded-full bg-gradient-to-r from-warning to-warning/50"
+                animate={{ width: `${otpPercent}%` }} transition={{ duration: 1 }} />
             </div>
           </div>
-          <div className="divider-gradient mb-5" />
-          <div className="text-center space-y-4">
-            <div className="flex items-center justify-center gap-3">
-              <p className="font-mono text-4xl tracking-[0.6em] text-warning font-bold">{currentOTP}</p>
-              <button onClick={() => copyToClipboard(currentOTP, "OTP")}
-                className="p-2 rounded-lg hover:bg-warning/10 transition-colors">
-                <Copy className="w-4 h-4 text-warning/70" />
-              </button>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-center gap-2 text-sm">
-                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="font-mono text-muted-foreground">Refreshes in {formatTime(otpTimeLeft)}</span>
-              </div>
-              <div className="w-48 mx-auto h-1 rounded-full bg-muted overflow-hidden">
-                <motion.div className="h-full rounded-full bg-gradient-to-r from-warning to-warning/50"
-                  animate={{ width: `${otpPercent}%` }} transition={{ duration: 1 }} />
-              </div>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              This OTP changes every 5 minutes. The verifier needs this + your certificate QR.
-            </p>
-          </div>
-        </motion.div>
-      )}
+          <p className="text-[11px] text-muted-foreground">
+            This OTP changes every 5 minutes. The verifier needs this + your certificate ID.
+          </p>
+        </div>
+      </motion.div>
 
-      {/* Certificate Card with Blur */}
+      {/* Certificate Card — fully visible, no blur */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-        className="glass-surface-elevated overflow-hidden relative">
-        {!unlocked && <div className="absolute inset-0 z-10 scan-line" />}
-
-        <div className={`p-6 sm:p-8 transition-all duration-700 ${!unlocked ? "blur-lg select-none pointer-events-none" : ""}`}>
+        className="glass-surface-elevated overflow-hidden">
+        <div className="p-6 sm:p-8">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <img src={logoImg} alt="Proof Vault" className="h-8 object-contain" />
@@ -416,21 +330,6 @@ const StudentView = () => {
             </div>
           </div>
         </div>
-
-        {!unlocked && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/30 backdrop-blur-sm">
-            <motion.div animate={{ scale: [1, 1.02, 1] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-              className="flex flex-col items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-muted/30 border border-border/40 backdrop-blur flex items-center justify-center">
-                <Eye className="w-7 h-7 text-muted-foreground/50" />
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-heading font-semibold text-muted-foreground">Certificate Locked</p>
-                <p className="text-xs text-muted-foreground/60 mt-1">Enter auth code above to reveal</p>
-              </div>
-            </motion.div>
-          </div>
-        )}
       </motion.div>
     </div>
   );
