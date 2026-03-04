@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Shield, GraduationCap, Search, Layers, Activity } from "lucide-react";
-import logoImg from "@/assets/Logo_1.png";
+import logoImg from "@/assets/Proof_Vault.png";
 import UniversityAdmin from "@/components/UniversityAdmin";
 import StudentView from "@/components/StudentView";
 import VerifierPortal from "@/components/VerifierPortal";
@@ -35,18 +35,8 @@ const Index = () => {
           transition={{ duration: 0.5 }}
           className="py-6 sm:py-8 flex items-center justify-between"
         >
-          <div className="flex items-center gap-4">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center">
-              <img src={logoImg} alt="Proof Vault Logo" className="w-10 h-10 object-contain" />
-            </div>
-            <div>
-              <h1 className="font-heading text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-                ProofVault
-              </h1>
-              <p className="text-[11px] text-muted-foreground tracking-wide mt-0.5">
-                Blockchain Credential Platform
-              </p>
-            </div>
+          <div className="flex items-center">
+            <img src={logoImg} alt="Proof Vault" className="h-12 sm:h-14 object-contain" />
           </div>
 
           <div className="hidden sm:flex items-center gap-3">
