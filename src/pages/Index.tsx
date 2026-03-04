@@ -12,7 +12,7 @@ import CertificateGenerator from "@/components/CertificateGenerator";
 type Tab = "admin" | "student" | "verifier" | "generate";
 
 const universityTabs: { id: Tab; label: string; shortLabel: string; icon: React.ElementType; desc: string }[] = [
-  { id: "admin", label: "University Admin", shortLabel: "Admin", icon: Shield, desc: "Issue & manage blockchain credentials" },
+  { id: "admin", label: "Issuer Dashboard", shortLabel: "Admin", icon: Shield, desc: "Issue & manage blockchain credentials" },
   { id: "generate", label: "Generate Certs", shortLabel: "Generate", icon: FileDown, desc: "Bulk generate PDF certificates" },
 ];
 
