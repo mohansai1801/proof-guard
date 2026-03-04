@@ -108,6 +108,7 @@ const Index = () => {
             className="pb-12"
           >
             {activeTab === "admin" && <UniversityAdmin />}
+            {activeTab === "generate" && <CertificateGenerator />}
             {activeTab === "student" && <StudentView />}
             {activeTab === "verifier" && <VerifierPortal />}
           </motion.main>
