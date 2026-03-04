@@ -1,31 +1,30 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Unlock, Clock, FileText, ExternalLink, ShieldCheck, Loader2, Eye, Key, Copy, LogIn } from "lucide-react";
+import { Lock, Unlock, Clock, ExternalLink, ShieldCheck, Loader2, Eye, Key, Copy, LogIn, LogOut, FileText } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "@/hooks/use-toast";
 import { generateOTP, getOTPTimeRemaining } from "@/lib/otp";
+import {
+  getCertsByStudentId,
+  validateStudentLogin,
+  startSession,
+  endSession,
+  subscribe,
+  type MockCertificate,
+} from "@/lib/mock-store";
 import logoImg from "@/assets/Proof_Vault.png";
 
 const TIMER_DURATION = 30 * 60; // 30 minutes
-const MOCK_AUTH_CODE = "123456";
-
-// Mock certificate for instant demo
-const MOCK_CERTIFICATE = {
-  certificateId: "PV-2026-48050",
-  recipientName: "Alex Johnson",
-  degree: "B.Tech Computer Science",
-  institution: "MIT University",
-  gpa: "3.87",
-  issueDate: "2026-03-04",
-  txHash: "0x7a3b8c9d2e1f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8b9c",
-  blockNumber: 52847291,
-  ipfsHash: "QmX7bVbzU4rYjKnLp5e3hDiPmC4kWjqYbFnDqK9aVdW8Xc",
-  authCode: MOCK_AUTH_CODE,
-};
 
 const StudentView = () => {
   const [studentId, setStudentId] = useState("");
+  const [passcode, setPasscode] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [myCerts, setMyCerts] = useState<MockCertificate[]>([]);
+  const [selectedCert, setSelectedCert] = useState<MockCertificate | null>(null);
+
+  // Unlock state per selected cert
   const [code, setCode] = useState("");
   const [unlocked, setUnlocked] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -34,26 +33,46 @@ const StudentView = () => {
   const [currentOTP, setCurrentOTP] = useState("");
   const [otpTimeLeft, setOtpTimeLeft] = useState(0);
 
-  const certificate = MOCK_CERTIFICATE;
+  // Re-sync certs from store
+  useEffect(() => {
+    if (!loggedIn) return;
+    const update = () => setMyCerts(getCertsByStudentId(studentId));
+    update();
+    return subscribe(update);
+  }, [loggedIn, studentId]);
 
-  // Student ID login (mock)
+  // Login handler
   const handleLogin = () => {
-    if (!studentId.trim()) return;
-    setLoggedIn(true);
-    toast({ title: "Welcome!", description: `Logged in as ${studentId}` });
+    if (!studentId.trim() || !passcode.trim()) return;
+    if (validateStudentLogin(studentId, passcode)) {
+      setLoggedIn(true);
+      setLoginError("");
+      toast({ title: "Welcome!", description: `Logged in as ${studentId}` });
+    } else {
+      setLoginError("Invalid Student ID or passcode");
+    }
   };
 
-  // Auth code unlock (mock: 123456)
+  const handleLogout = () => {
+    if (selectedCert && unlocked) endSession(selectedCert.certificateId);
+    setLoggedIn(false);
+    setStudentId("");
+    setPasscode("");
+    setSelectedCert(null);
+    setUnlocked(false);
+    setCode("");
+  };
+
+  // Unlock certificate with its auth code
   const handleUnlock = () => {
-    if (code.length !== 6) return;
+    if (!selectedCert || code.length !== 6) return;
     setLoading(true);
     setError(false);
-
-    // Simulate 1s network delay for realism
     setTimeout(() => {
-      if (code === MOCK_AUTH_CODE) {
+      if (code === selectedCert.authCode) {
         setUnlocked(true);
         setTimeLeft(TIMER_DURATION);
+        startSession(selectedCert.certificateId);
         toast({ title: "Access Granted", description: "Certificate unlocked — 30 min session active" });
       } else {
         setError(true);
@@ -64,11 +83,20 @@ const StudentView = () => {
   };
 
   const lockCertificate = useCallback(() => {
+    if (selectedCert) endSession(selectedCert.certificateId);
     setUnlocked(false);
     setCode("");
     setTimeLeft(TIMER_DURATION);
     setCurrentOTP("");
-  }, []);
+  }, [selectedCert]);
+
+  // Back to list
+  const goBack = () => {
+    if (unlocked && selectedCert) endSession(selectedCert.certificateId);
+    setSelectedCert(null);
+    setUnlocked(false);
+    setCode("");
+  };
 
   // 30-minute countdown
   useEffect(() => {
@@ -84,16 +112,15 @@ const StudentView = () => {
 
   // OTP rotation
   useEffect(() => {
-    if (!unlocked) return;
+    if (!unlocked || !selectedCert) return;
     const updateOTP = () => {
-      const otp = generateOTP(certificate.certificateId, certificate.authCode);
-      setCurrentOTP(otp);
+      setCurrentOTP(generateOTP(selectedCert.certificateId, selectedCert.authCode));
       setOtpTimeLeft(getOTPTimeRemaining());
     };
     updateOTP();
     const interval = setInterval(updateOTP, 1000);
     return () => clearInterval(interval);
-  }, [unlocked]);
+  }, [unlocked, selectedCert]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -109,7 +136,7 @@ const StudentView = () => {
     toast({ title: `${label} copied!` });
   };
 
-  // Student ID Login Screen
+  // --- LOGIN SCREEN ---
   if (!loggedIn) {
     return (
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
@@ -119,28 +146,100 @@ const StudentView = () => {
             <LogIn className="w-7 h-7 text-highlight" />
           </div>
           <h3 className="font-heading text-xl font-semibold">Student Personal Vault</h3>
-          <p className="text-sm text-muted-foreground">Enter your Student ID to access your certificates</p>
+          <p className="text-sm text-muted-foreground">Enter your Student ID and passcode to access your certificates</p>
         </div>
         <div className="space-y-4">
           <div>
             <label className="data-label">Student ID</label>
             <input type="text" value={studentId} onChange={(e) => setStudentId(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-              placeholder="e.g. STU-2026-001"
-              className="input-field" />
+              placeholder="e.g. STU-2026-001" className="input-field" />
           </div>
-          <button onClick={handleLogin} disabled={!studentId.trim()}
+          <div>
+            <label className="data-label">Passcode</label>
+            <input type="password" value={passcode} onChange={(e) => setPasscode(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              placeholder="Enter passcode" className="input-field" />
+          </div>
+          {loginError && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="badge-error w-fit">
+              ✕ {loginError}
+            </motion.div>
+          )}
+          <button onClick={handleLogin} disabled={!studentId.trim() || !passcode.trim()}
             className="w-full py-3.5 btn-primary flex items-center justify-center gap-2">
             <LogIn className="w-4 h-4" /> Access Vault
           </button>
-          <p className="text-[11px] text-muted-foreground text-center">Enter any Student ID for demo purposes</p>
+          <p className="text-[11px] text-muted-foreground text-center">
+            Demo: <span className="font-mono text-highlight">STU-2026-001</span> / <span className="font-mono text-highlight">pass123</span>
+          </p>
         </div>
       </motion.div>
     );
   }
 
+  // --- CERTIFICATE LIST ---
+  if (!selectedCert) {
+    return (
+      <div className="space-y-6">
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+          className="glass-surface-elevated p-6 sm:p-8">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-highlight/15 to-highlight-secondary/10 border border-highlight/15 flex items-center justify-center">
+                <FileText className="w-5 h-5 text-highlight" />
+              </div>
+              <div>
+                <h3 className="font-heading text-lg font-semibold">My Certificates</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Issued to {studentId}</p>
+              </div>
+            </div>
+            <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-2 btn-ghost text-xs">
+              <LogOut className="w-3.5 h-3.5" /> Sign Out
+            </button>
+          </div>
+          <div className="divider-gradient mb-5" />
+
+          {myCerts.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">No certificates issued to this Student ID yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {myCerts.filter(c => c.status === "Anchored").map((cert, i) => (
+                <motion.button key={cert.certificateId}
+                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
+                  onClick={() => setSelectedCert(cert)}
+                  className="w-full text-left p-4 rounded-xl bg-muted/10 border border-border/30 hover:border-highlight/20 hover:bg-muted/20 transition-all duration-200 group">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold">{cert.degree}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{cert.institution} • {cert.issueDate}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="badge-success text-[10px]"><ShieldCheck className="w-3 h-3" /> Anchored</span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] font-mono text-muted-foreground mt-2">{cert.certificateId}</p>
+                </motion.button>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      </div>
+    );
+  }
+
+  // --- SELECTED CERTIFICATE VIEW (with unlock) ---
+  const certificate = selectedCert;
+
   return (
     <div className="space-y-6">
+      {/* Back button */}
+      <button onClick={goBack} className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+        ← Back to certificates
+      </button>
+
       {/* Auth Code Card */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
         className="glass-surface-elevated p-6 sm:p-8">
@@ -189,7 +288,7 @@ const StudentView = () => {
               )}
             </AnimatePresence>
             <p className="text-[11px] text-muted-foreground">
-              💡 For demo: enter <span className="font-mono text-highlight">123456</span> — Access expires after 30 minutes.
+              💡 Enter the auth code provided by your university. Access expires after 30 minutes.
             </p>
           </div>
         ) : (
@@ -206,9 +305,7 @@ const StudentView = () => {
                     {formatTime(timeLeft)}
                   </span>
                 </div>
-                <button onClick={lockCertificate} className="text-xs px-3 py-1.5 btn-ghost !rounded-lg">
-                  Re-lock
-                </button>
+                <button onClick={lockCertificate} className="text-xs px-3 py-1.5 btn-ghost !rounded-lg">Re-lock</button>
               </div>
             </div>
             <div className="w-full h-1 rounded-full bg-muted overflow-hidden">
@@ -277,7 +374,6 @@ const StudentView = () => {
           <div className="divider-gradient mb-6" />
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Certificate details */}
             <div className="md:col-span-2 space-y-4">
               <div className="text-center py-3">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-mono">Polygon Blockchain Credential</p>
@@ -299,34 +395,28 @@ const StudentView = () => {
                   </div>
                 ))}
               </div>
-
               <div className="data-cell">
                 <p className="data-label">Transaction Hash</p>
                 <div className="flex items-center gap-2">
                   <p className="font-mono text-xs text-highlight/60 break-all leading-relaxed flex-1">{certificate.txHash}</p>
                   <a href={`https://amoy.polygonscan.com/tx/${certificate.txHash}`} target="_blank" rel="noopener noreferrer"
                     className="flex items-center gap-1 text-xs text-highlight/70 hover:text-highlight transition-colors flex-shrink-0">
-                    <ExternalLink className="w-3 h-3" />
-                    <span>PolygonScan</span>
+                    <ExternalLink className="w-3 h-3" /> PolygonScan
                   </a>
                 </div>
               </div>
             </div>
 
-            {/* QR Code */}
             <div className="flex flex-col items-center justify-center gap-4">
               <div className="p-5 rounded-2xl bg-background/50 border border-border/30">
                 <QRCodeSVG value={`proofvault://verify/${certificate.certificateId}`}
                   size={140} bgColor="transparent" fgColor="hsl(210, 100%, 56%)" level="M" />
               </div>
-              <p className="text-[10px] text-muted-foreground text-center font-mono">
-                Scan to Verify
-              </p>
+              <p className="text-[10px] text-muted-foreground text-center font-mono">Scan to Verify</p>
             </div>
           </div>
         </div>
 
-        {/* Locked overlay */}
         {!unlocked && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/30 backdrop-blur-sm">
             <motion.div animate={{ scale: [1, 1.02, 1] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}

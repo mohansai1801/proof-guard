@@ -1,26 +1,14 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, ShieldCheck, ShieldX, QrCode, Hash, Building, CalendarDays, Loader2, RotateCcw, KeyRound, Clock, ArrowRight, ExternalLink, AlertTriangle } from "lucide-react";
+import { Search, ShieldCheck, ShieldX, Hash, Building, CalendarDays, Loader2, RotateCcw, KeyRound, Clock, ArrowRight, ExternalLink, AlertTriangle } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "@/hooks/use-toast";
 import { verifyOTP } from "@/lib/otp";
+import { getCertByCertificateId, isSessionActive, type MockCertificate } from "@/lib/mock-store";
 
-// Mock certificate for demo (matches StudentView)
-const MOCK_CERT = {
-  certificateId: "PV-2026-48050",
-  name: "Alex Johnson",
-  issuer: "MIT University",
-  degree: "B.Tech Computer Science",
-  gpa: "3.87",
-  date: "2026-03-04",
-  txHash: "0x7a3b8c9d2e1f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8b9c",
-  blockNumber: 52847291,
-  authCode: "123456",
-};
+type VerifyState = "idle" | "enter-otp" | "searching" | "verified" | "invalid" | "expired" | "no-session";
 
-const RESULT_DURATION = 30 * 60; // 30 minutes - must match student timer
-
-type VerifyState = "idle" | "enter-otp" | "searching" | "verified" | "invalid" | "expired";
+const RESULT_DURATION = 30 * 60;
 
 const VerifierPortal = () => {
   const [certCode, setCertCode] = useState("");
@@ -28,9 +16,24 @@ const VerifierPortal = () => {
   const [state, setState] = useState<VerifyState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [viewTimer, setViewTimer] = useState(RESULT_DURATION);
+  const [verifiedCert, setVerifiedCert] = useState<MockCertificate | null>(null);
 
   const handleCertSubmit = () => {
     if (!certCode.trim()) return;
+
+    const cert = getCertByCertificateId(certCode.trim());
+    if (!cert) {
+      setErrorMsg("No matching credential found on the Polygon ledger");
+      setState("invalid");
+      return;
+    }
+
+    // Check if student has an active session
+    if (!isSessionActive(cert.certificateId)) {
+      setState("no-session");
+      return;
+    }
+
     setState("enter-otp");
   };
 
@@ -39,19 +42,23 @@ const VerifierPortal = () => {
     setState("searching");
     setErrorMsg("");
 
-    // Simulate 2s verification for drama
     setTimeout(() => {
-      // Check if cert ID matches mock
-      if (certCode.trim() !== MOCK_CERT.certificateId) {
-        setErrorMsg("No matching credential found on the Polygon ledger");
+      const cert = getCertByCertificateId(certCode.trim());
+      if (!cert) {
+        setErrorMsg("No matching credential found");
         setState("invalid");
         return;
       }
 
-      // Verify OTP using same deterministic algorithm
-      const otpValid = verifyOTP(MOCK_CERT.certificateId, MOCK_CERT.authCode, otp.trim());
+      if (!isSessionActive(cert.certificateId)) {
+        setState("expired");
+        return;
+      }
+
+      const otpValid = verifyOTP(cert.certificateId, cert.authCode, otp.trim());
 
       if (otpValid) {
+        setVerifiedCert(cert);
         setState("verified");
         setViewTimer(RESULT_DURATION);
         toast({ title: "✓ Credential Verified", description: "Certificate + OTP match confirmed on Polygon" });
@@ -84,6 +91,7 @@ const VerifierPortal = () => {
     setState("idle");
     setErrorMsg("");
     setViewTimer(RESULT_DURATION);
+    setVerifiedCert(null);
   };
 
   const formatTime = (seconds: number) => {
@@ -156,7 +164,7 @@ const VerifierPortal = () => {
               <div className="data-cell flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-highlight/50 animate-pulse-glow" />
                 <p className="text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground/70">Security:</span> Both QR certificate ID + student's live OTP required
+                  <span className="font-medium text-foreground/70">Security:</span> Certificate ID + student's live OTP + active session required
                 </p>
               </div>
             </motion.div>
@@ -166,7 +174,7 @@ const VerifierPortal = () => {
 
       {/* Verified Result Card */}
       <AnimatePresence mode="wait">
-        {state === "verified" && (
+        {state === "verified" && verifiedCert && (
           <motion.div key="verified" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
             className="glass-surface-elevated p-6 sm:p-8 space-y-6">
 
@@ -188,11 +196,11 @@ const VerifierPortal = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-3">
                 {[
-                  { icon: Building, label: "Issuing Institution", value: "University Official" },
-                  { label: "Recipient Name", value: MOCK_CERT.name },
-                  { label: "Credential Type", value: MOCK_CERT.degree },
-                  { icon: CalendarDays, label: "Date Issued", value: MOCK_CERT.date },
-                  { label: "GPA", value: MOCK_CERT.gpa },
+                  { icon: Building, label: "Issuing Institution", value: verifiedCert.institution },
+                  { label: "Recipient Name", value: verifiedCert.recipientName },
+                  { label: "Credential Type", value: verifiedCert.degree },
+                  { icon: CalendarDays, label: "Date Issued", value: verifiedCert.issueDate },
+                  { label: "GPA", value: verifiedCert.gpa },
                   { label: "Blockchain Status", value: "Immutable / Confirmed", highlight: true },
                 ].map((item) => (
                   <div key={item.label} className="data-cell">
@@ -213,19 +221,19 @@ const VerifierPortal = () => {
                     <Hash className="w-3 h-3 text-muted-foreground" />
                     <p className="data-label !mb-0">Transaction Hash</p>
                   </div>
-                  <p className="font-mono text-xs text-highlight/70 break-all leading-relaxed">{MOCK_CERT.txHash}</p>
-                  <a href={`https://amoy.polygonscan.com/tx/${MOCK_CERT.txHash}`} target="_blank" rel="noopener noreferrer"
+                  <p className="font-mono text-xs text-highlight/70 break-all leading-relaxed">{verifiedCert.txHash}</p>
+                  <a href={`https://amoy.polygonscan.com/tx/${verifiedCert.txHash}`} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 mt-2 text-xs text-highlight/70 hover:text-highlight transition-colors">
                     <ExternalLink className="w-3 h-3" /> View on PolygonScan
                   </a>
                 </div>
                 <div className="data-cell">
                   <p className="data-label">Block Number</p>
-                  <p className="data-value-highlight">{MOCK_CERT.blockNumber.toLocaleString()}</p>
+                  <p className="data-value-highlight">{verifiedCert.blockNumber.toLocaleString()}</p>
                 </div>
                 <div className="data-cell flex items-center justify-center py-6">
                   <div className="p-4 rounded-xl bg-background/50 border border-border/30">
-                    <QRCodeSVG value={`proofvault://verify/${MOCK_CERT.certificateId}`}
+                    <QRCodeSVG value={`proofvault://verify/${verifiedCert.certificateId}`}
                       size={120} bgColor="transparent" fgColor="hsl(160, 72%, 42%)" level="M" />
                   </div>
                 </div>
@@ -238,7 +246,28 @@ const VerifierPortal = () => {
           </motion.div>
         )}
 
-        {/* Expired Warning */}
+        {/* No active session */}
+        {state === "no-session" && (
+          <motion.div key="no-session" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            className="glass-surface-elevated p-6 sm:p-8 space-y-5">
+            <div className="flex items-center gap-4 p-5 rounded-xl bg-destructive/6 border border-destructive/15">
+              <div className="w-12 h-12 rounded-xl bg-destructive/15 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-6 h-6 text-destructive" />
+              </div>
+              <div>
+                <h4 className="font-heading font-bold text-lg text-destructive">No Active Session</h4>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  The student has not unlocked this certificate yet. Ask them to open their vault and enter their auth code first.
+                </p>
+              </div>
+            </div>
+            <button onClick={reset} className="w-full py-3 btn-ghost flex items-center justify-center gap-2">
+              <RotateCcw className="w-4 h-4" /> Try Again
+            </button>
+          </motion.div>
+        )}
+
+        {/* Expired */}
         {state === "expired" && (
           <motion.div key="expired" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
             className="glass-surface-elevated p-6 sm:p-8 space-y-5">
