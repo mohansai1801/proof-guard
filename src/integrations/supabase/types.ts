@@ -14,7 +14,95 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      certificates: {
+        Row: {
+          auth_code: string
+          certificate_id: string
+          created_at: string
+          degree: string
+          gpa: string | null
+          id: string
+          institution: string
+          ipfs_hash: string | null
+          ipfs_url: string | null
+          issue_date: string
+          polygon_block_number: number | null
+          recipient_name: string
+          status: string
+          tx_hash: string | null
+          updated_at: string
+        }
+        Insert: {
+          auth_code: string
+          certificate_id: string
+          created_at?: string
+          degree: string
+          gpa?: string | null
+          id?: string
+          institution: string
+          ipfs_hash?: string | null
+          ipfs_url?: string | null
+          issue_date?: string
+          polygon_block_number?: number | null
+          recipient_name: string
+          status?: string
+          tx_hash?: string | null
+          updated_at?: string
+        }
+        Update: {
+          auth_code?: string
+          certificate_id?: string
+          created_at?: string
+          degree?: string
+          gpa?: string | null
+          id?: string
+          institution?: string
+          ipfs_hash?: string | null
+          ipfs_url?: string | null
+          issue_date?: string
+          polygon_block_number?: number | null
+          recipient_name?: string
+          status?: string
+          tx_hash?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      verification_logs: {
+        Row: {
+          certificate_id: string
+          id: string
+          metadata: Json | null
+          verification_result: boolean
+          verified_at: string
+          verifier_ip: string | null
+        }
+        Insert: {
+          certificate_id: string
+          id?: string
+          metadata?: Json | null
+          verification_result: boolean
+          verified_at?: string
+          verifier_ip?: string | null
+        }
+        Update: {
+          certificate_id?: string
+          id?: string
+          metadata?: Json | null
+          verification_result?: boolean
+          verified_at?: string
+          verifier_ip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "verification_logs_certificate_id_fkey"
+            columns: ["certificate_id"]
+            isOneToOne: false
+            referencedRelation: "certificates"
+            referencedColumns: ["certificate_id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
