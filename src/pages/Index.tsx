@@ -7,10 +7,11 @@ import StudentView from "@/components/StudentView";
 import VerifierPortal from "@/components/VerifierPortal";
 import CertificateGenerator from "@/components/CertificateGenerator";
 
-type Tab = "admin" | "student" | "verifier";
+type Tab = "admin" | "student" | "verifier" | "generate";
 
 const tabs: { id: Tab; label: string; shortLabel: string; icon: React.ElementType; desc: string }[] = [
   { id: "admin", label: "University Admin", shortLabel: "Admin", icon: Shield, desc: "Issue & manage blockchain credentials" },
+  { id: "generate", label: "Generate Certs", shortLabel: "Generate", icon: FileDown, desc: "Bulk generate PDF certificates" },
   { id: "student", label: "Student Portal", shortLabel: "Student", icon: GraduationCap, desc: "Access & view your certificates" },
   { id: "verifier", label: "Verification", shortLabel: "Verify", icon: Search, desc: "Verify credential authenticity" },
 ];
