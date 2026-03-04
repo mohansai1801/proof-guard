@@ -36,8 +36,8 @@ const Index = () => {
           className="py-6 sm:py-8 flex items-center justify-between"
         >
           <div className="flex items-center gap-4">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-highlight to-highlight-secondary flex items-center justify-center shadow-lg shadow-highlight/20">
-              <Layers className="w-5 h-5 text-primary-foreground" strokeWidth={2.2} />
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center">
+              <img src={logoImg} alt="Proof Vault Logo" className="w-10 h-10 object-contain" />
             </div>
             <div>
               <h1 className="font-heading text-xl sm:text-2xl font-bold tracking-tight text-foreground">
