@@ -1,52 +1,65 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, CheckCircle2, Loader2, FileText, Hash, Users, Shield, Copy, Key, ArrowRight } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { Upload, CheckCircle2, Loader2, FileText, Users, Shield, ExternalLink, Layers } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
-type MintState = "idle" | "minting" | "success";
-
-interface MintResult {
-  certificateId: string;
-  authCode: string;
+interface IssuedCert {
+  id: string;
+  name: string;
+  degree: string;
+  institution: string;
+  date: string;
+  status: "Pending" | "Anchoring..." | "Anchored";
   txHash: string;
   blockNumber: number;
-  ipfsHash: string;
-  ipfsUrl: string;
 }
 
+// Mock data for demo
+const MOCK_CERTS: IssuedCert[] = [
+  { id: "PV-2026-48050", name: "Alex Johnson", degree: "B.Tech Computer Science", institution: "MIT University", date: "Mar 4, 2026", status: "Anchored", txHash: "0x7a3b8c9d2e1f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8b9c", blockNumber: 52847291 },
+  { id: "PV-2026-31207", name: "Sarah Williams", degree: "M.Sc Data Science", institution: "Stanford University", date: "Mar 4, 2026", status: "Anchored", txHash: "0x1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a", blockNumber: 52847305 },
+  { id: "PV-2026-67834", name: "James Chen", degree: "B.A Economics", institution: "Harvard University", date: "Mar 3, 2026", status: "Anchored", txHash: "0x9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e", blockNumber: 52846199 },
+];
+
 const UniversityAdmin = () => {
-  const [mintState, setMintState] = useState<MintState>("idle");
-  const [mintResult, setMintResult] = useState<MintResult | null>(null);
-  const [studentCount, setStudentCount] = useState("1");
-  const [recipientName, setRecipientName] = useState("Alex Johnson");
-  const [degree, setDegree] = useState("B.Tech Computer Science");
-  const [institution, setInstitution] = useState("MIT University");
-  const [gpa, setGpa] = useState("3.87");
+  const [certs, setCerts] = useState<IssuedCert[]>(MOCK_CERTS);
+  const [bulkIssuing, setBulkIssuing] = useState(false);
+  const [progress, setProgress] = useState(0);
 
-  const handleBulkIssue = async () => {
-    setMintState("minting");
-    try {
-      const { data, error } = await supabase.functions.invoke('mint-certificate', {
-        body: { recipientName, degree, institution, gpa, studentCount: parseInt(studentCount) },
-      });
-      if (error) throw error;
-      if (!data.success) throw new Error(data.error);
-      setMintResult(data.certificate);
-      setMintState("success");
-      toast({ title: "Certificate Minted!", description: `ID: ${data.certificate.certificateId}` });
-    } catch (e: unknown) {
-      console.error('Mint failed:', e);
-      setMintState("idle");
-      toast({ title: "Minting Failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
-    }
-  };
+  const totalIssued = certs.filter(c => c.status === "Anchored").length;
+  const totalStudents = certs.length;
 
-  const reset = () => { setMintState("idle"); setMintResult(null); };
+  const handleBulkIssue = () => {
+    setBulkIssuing(true);
+    setProgress(0);
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    toast({ title: `${label} copied!` });
+    // New mock cert to add
+    const newCert: IssuedCert = {
+      id: `PV-2026-${String(Math.floor(Math.random() * 99999)).padStart(5, "0")}`,
+      name: "Emily Davis",
+      degree: "M.A International Relations",
+      institution: "MIT University",
+      date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      status: "Anchoring...",
+      txHash: "0x" + Array.from({ length: 64 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join(""),
+      blockNumber: 52847291 + Math.floor(Math.random() * 1000),
+    };
+
+    setCerts(prev => [newCert, ...prev]);
+
+    // 5-second animation
+    const start = Date.now();
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - start;
+      const pct = Math.min((elapsed / 5000) * 100, 100);
+      setProgress(pct);
+      if (pct >= 100) {
+        clearInterval(interval);
+        setCerts(prev => prev.map(c => c.id === newCert.id ? { ...c, status: "Anchored" as const } : c));
+        setBulkIssuing(false);
+        toast({ title: "Certificate Anchored!", description: `${newCert.name} — ${newCert.id}` });
+      }
+    }, 50);
   };
 
   return (
@@ -54,18 +67,14 @@ const UniversityAdmin = () => {
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { icon: FileText, label: "Certificates Issued", value: "—", iconColor: "text-highlight" },
-          { icon: Users, label: "Registered Students", value: "—", iconColor: "text-highlight-secondary" },
-          { icon: Shield, label: "On-Chain Verified", value: "—", iconColor: "text-success" },
+          { icon: FileText, label: "Certificates Issued", value: String(totalIssued), iconColor: "text-highlight" },
+          { icon: Users, label: "Total Students", value: String(totalStudents), iconColor: "text-highlight-secondary" },
+          { icon: Shield, label: "On-Chain Verified", value: String(totalIssued), iconColor: "text-success" },
         ].map((stat, i) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
+          <motion.div key={stat.label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.08 }}
-            className="glass-surface p-5 flex items-center gap-4 group hover:border-highlight/15 transition-all duration-300"
-          >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-highlight/10 to-highlight-secondary/5 flex items-center justify-center border border-highlight/10 group-hover:border-highlight/20 transition-colors">
+            className="glass-surface p-5 flex items-center gap-4 group hover:border-highlight/15 transition-all duration-300">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-highlight/10 to-highlight-secondary/5 flex items-center justify-center border border-highlight/10">
               <stat.icon className={`w-5 h-5 ${stat.iconColor}`} />
             </div>
             <div>
@@ -76,139 +85,99 @@ const UniversityAdmin = () => {
         ))}
       </div>
 
-      {/* Issue Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
-        className="glass-surface-elevated p-6 sm:p-8"
-      >
+      {/* Bulk Issue Button + Loading */}
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+        className="glass-surface-elevated p-6 sm:p-8">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-highlight to-highlight-secondary flex items-center justify-center shadow-lg shadow-highlight/15">
               <Upload className="w-5 h-5 text-primary-foreground" />
             </div>
             <div>
-              <h3 className="font-heading text-lg font-semibold">Issue New Credential</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Mint certificate to Polygon blockchain</p>
+              <h3 className="font-heading text-lg font-semibold">Issuer Dashboard</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Issue & anchor credentials to Polygon blockchain</p>
             </div>
           </div>
+          <button onClick={handleBulkIssue} disabled={bulkIssuing}
+            className="px-5 py-2.5 btn-primary flex items-center gap-2 text-sm">
+            {bulkIssuing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {bulkIssuing ? "Anchoring..." : "Bulk Issue"}
+          </button>
         </div>
 
-        <div className="divider-gradient mb-6" />
-
-        <AnimatePresence mode="wait">
-          {mintState === "idle" && (
-            <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[
-                  { label: "Recipient Name", value: recipientName, setter: setRecipientName, placeholder: "Full name" },
-                  { label: "Degree / Program", value: degree, setter: setDegree, placeholder: "e.g. B.Tech CS" },
-                  { label: "Institution", value: institution, setter: setInstitution, placeholder: "University name" },
-                  { label: "GPA (optional)", value: gpa, setter: setGpa, placeholder: "e.g. 3.87" },
-                ].map((field) => (
-                  <div key={field.label}>
-                    <label className="data-label">{field.label}</label>
-                    <input
-                      type="text" value={field.value} onChange={(e) => field.setter(e.target.value)}
-                      placeholder={field.placeholder}
-                      className="input-field"
-                    />
+        {/* Anchoring Animation */}
+        <AnimatePresence>
+          {bulkIssuing && (
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }} className="mb-6 overflow-hidden">
+              <div className="p-5 rounded-xl bg-gradient-to-r from-highlight/5 to-highlight-secondary/5 border border-highlight/15 space-y-4">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="w-5 h-5 text-highlight animate-spin" />
+                  <div>
+                    <p className="text-sm font-semibold">Anchoring to Polygon Blockchain...</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Pinning metadata to IPFS → Writing to Polygon PoS</p>
                   </div>
-                ))}
-              </div>
-
-              <div className="data-cell flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-highlight/50 animate-pulse-glow" />
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground/70">Network:</span> Polygon Amoy Testnet &nbsp;•&nbsp;
-                  <span className="font-medium text-foreground/70">Storage:</span> IPFS via Pinata &nbsp;•&nbsp;
-                  Auth code auto-generated
-                </p>
-              </div>
-
-              <button onClick={handleBulkIssue} disabled={!recipientName || !degree || !institution}
-                className="w-full py-3.5 btn-primary flex items-center justify-center gap-2.5">
-                <Upload className="w-4 h-4" />
-                Mint Certificate on Polygon
-                <ArrowRight className="w-4 h-4 ml-1" />
-              </button>
-            </motion.div>
-          )}
-
-          {mintState === "minting" && (
-            <motion.div key="minting" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-              className="flex flex-col items-center py-14 space-y-6">
-              <div className="relative">
-                <Loader2 className="w-12 h-12 text-highlight animate-spin" />
-              </div>
-              <div className="text-center">
-                <h4 className="font-heading text-lg font-semibold">Minting Certificate...</h4>
-                <p className="text-sm text-muted-foreground mt-2">Pinning to IPFS → Recording on Polygon</p>
-              </div>
-              <div className="w-48 h-1.5 rounded-full bg-muted overflow-hidden">
-                <motion.div className="h-full rounded-full bg-gradient-to-r from-highlight to-highlight-secondary"
-                  initial={{ width: "0%" }} animate={{ width: "100%" }}
-                  transition={{ duration: 5, ease: "easeInOut" }} />
-              </div>
-            </motion.div>
-          )}
-
-          {mintState === "success" && mintResult && (
-            <motion.div key="success" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-              className="space-y-5">
-              <div className="flex items-center gap-3 p-4 rounded-xl bg-success/8 border border-success/15">
-                <CheckCircle2 className="w-7 h-7 text-success flex-shrink-0" />
-                <div>
-                  <p className="font-heading font-semibold text-success">Certificate Minted Successfully</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">On-chain confirmation received from Polygon</p>
                 </div>
-              </div>
-
-              {/* Auth Code highlight */}
-              <div className="p-5 rounded-xl bg-gradient-to-br from-warning/5 to-warning/[0.02] border border-warning/15 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Key className="w-4 h-4 text-warning" />
-                    <span className="data-label !mb-0 !text-warning">Student Auth Code</span>
-                  </div>
-                  <button onClick={() => copyToClipboard(mintResult.authCode, "Auth Code")}
-                    className="p-2 rounded-lg hover:bg-warning/10 transition-colors" title="Copy">
-                    <Copy className="w-4 h-4 text-warning/70 hover:text-warning transition-colors" />
-                  </button>
+                <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
+                  <motion.div className="h-full rounded-full bg-gradient-to-r from-highlight to-highlight-secondary"
+                    animate={{ width: `${progress}%` }} transition={{ duration: 0.1 }} />
                 </div>
-                <p className="font-mono text-3xl tracking-[0.6em] text-center text-warning font-bold py-2">{mintResult.authCode}</p>
-                <p className="text-[11px] text-muted-foreground text-center">Share this code securely with the student to grant certificate access</p>
+                <p className="text-xs font-mono text-muted-foreground text-right">{Math.round(progress)}%</p>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="data-cell">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="data-label !mb-0">Certificate ID</span>
-                    <button onClick={() => copyToClipboard(mintResult.certificateId, "Certificate ID")}
-                      className="p-1 rounded hover:bg-muted/50 transition-colors">
-                      <Copy className="w-3.5 h-3.5 text-muted-foreground" />
-                    </button>
-                  </div>
-                  <p className="data-value-highlight text-sm">{mintResult.certificateId}</p>
-                </div>
-                <div className="data-cell">
-                  <span className="data-label">Block Number</span>
-                  <p className="data-value-highlight">{mintResult.blockNumber?.toLocaleString()}</p>
-                </div>
-              </div>
-
-              <div className="data-cell">
-                <span className="data-label">Transaction Hash</span>
-                <p className="font-mono text-xs text-highlight/70 break-all leading-relaxed">{mintResult.txHash}</p>
-              </div>
-
-              <button onClick={reset} className="w-full py-3 btn-ghost">
-                Issue Another Certificate
-              </button>
             </motion.div>
           )}
         </AnimatePresence>
+
+        <div className="divider-gradient mb-4" />
+
+        {/* Certificates Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[11px] font-mono uppercase tracking-wider text-muted-foreground border-b border-border/40">
+                <th className="pb-3 pr-4">Name</th>
+                <th className="pb-3 pr-4 hidden md:table-cell">Certificate ID</th>
+                <th className="pb-3 pr-4 hidden sm:table-cell">Date</th>
+                <th className="pb-3 pr-4">Status</th>
+                <th className="pb-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {certs.map((cert, i) => (
+                <motion.tr key={cert.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="border-b border-border/20 hover:bg-muted/10 transition-colors">
+                  <td className="py-3.5 pr-4">
+                    <p className="font-medium">{cert.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{cert.degree}</p>
+                  </td>
+                  <td className="py-3.5 pr-4 hidden md:table-cell">
+                    <span className="font-mono text-xs text-highlight">{cert.id}</span>
+                  </td>
+                  <td className="py-3.5 pr-4 hidden sm:table-cell text-xs text-muted-foreground">{cert.date}</td>
+                  <td className="py-3.5 pr-4">
+                    {cert.status === "Anchored" ? (
+                      <span className="badge-success"><CheckCircle2 className="w-3 h-3" /> Anchored</span>
+                    ) : cert.status === "Anchoring..." ? (
+                      <span className="badge-warning"><Loader2 className="w-3 h-3 animate-spin" /> Anchoring...</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Pending</span>
+                    )}
+                  </td>
+                  <td className="py-3.5">
+                    {cert.status === "Anchored" && (
+                      <a href={`https://amoy.polygonscan.com/tx/${cert.txHash}`} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-highlight/70 hover:text-highlight transition-colors">
+                        <ExternalLink className="w-3 h-3" />
+                        <span className="hidden sm:inline">PolygonScan</span>
+                      </a>
+                    )}
+                  </td>
+                </motion.tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </motion.div>
     </div>
   );

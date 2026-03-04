@@ -1,30 +1,31 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, ShieldCheck, ShieldX, QrCode, Hash, Building, CalendarDays, Loader2, RotateCcw, KeyRound, Clock, ArrowRight } from "lucide-react";
+import { Search, ShieldCheck, ShieldX, QrCode, Hash, Building, CalendarDays, Loader2, RotateCcw, KeyRound, Clock, ArrowRight, ExternalLink, AlertTriangle } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
+import { verifyOTP } from "@/lib/otp";
 
-interface VerifiedCert {
-  certificateId: string;
-  name: string;
-  issuer: string;
-  degree: string;
-  gpa: string | null;
-  date: string;
-  txHash: string;
-  ipfsHash: string | null;
-  blockNumber: number | null;
-}
+// Mock certificate for demo (matches StudentView)
+const MOCK_CERT = {
+  certificateId: "PV-2026-48050",
+  name: "Alex Johnson",
+  issuer: "MIT University",
+  degree: "B.Tech Computer Science",
+  gpa: "3.87",
+  date: "2026-03-04",
+  txHash: "0x7a3b8c9d2e1f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8b9c",
+  blockNumber: 52847291,
+  authCode: "123456",
+};
 
-type VerifyState = "idle" | "enter-otp" | "searching" | "verified" | "invalid";
+const RESULT_DURATION = 30 * 60; // 30 minutes - must match student timer
 
-const RESULT_DURATION = 10 * 60; // 10 minutes
+type VerifyState = "idle" | "enter-otp" | "searching" | "verified" | "invalid" | "expired";
 
 const VerifierPortal = () => {
   const [certCode, setCertCode] = useState("");
   const [otp, setOtp] = useState("");
   const [state, setState] = useState<VerifyState>("idle");
-  const [result, setResult] = useState<VerifiedCert | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [viewTimer, setViewTimer] = useState(RESULT_DURATION);
 
@@ -33,38 +34,57 @@ const VerifierPortal = () => {
     setState("enter-otp");
   };
 
-  const handleVerify = async () => {
+  const handleVerify = () => {
     if (!otp.trim() || otp.length !== 6) return;
     setState("searching");
     setErrorMsg("");
-    try {
-      const { data, error } = await supabase.functions.invoke('verify-with-otp', {
-        body: { certificateId: certCode.trim(), otp: otp.trim() },
-      });
-      if (error) throw error;
-      if (data.verified) {
-        setResult(data.certificate);
+
+    // Simulate 2s verification for drama
+    setTimeout(() => {
+      // Check if cert ID matches mock
+      if (certCode.trim() !== MOCK_CERT.certificateId) {
+        setErrorMsg("No matching credential found on the Polygon ledger");
+        setState("invalid");
+        return;
+      }
+
+      // Verify OTP using same deterministic algorithm
+      const otpValid = verifyOTP(MOCK_CERT.certificateId, MOCK_CERT.authCode, otp.trim());
+
+      if (otpValid) {
         setState("verified");
-        // Start view timer
         setViewTimer(RESULT_DURATION);
-        const interval = setInterval(() => {
-          setViewTimer((prev) => {
-            if (prev <= 1) { clearInterval(interval); reset(); return 0; }
-            return prev - 1;
-          });
-        }, 1000);
+        toast({ title: "✓ Credential Verified", description: "Certificate + OTP match confirmed on Polygon" });
       } else {
-        setErrorMsg(data.error || "Verification failed");
+        setErrorMsg("OTP verification failed. The student's code may have expired or is invalid.");
         setState("invalid");
       }
-    } catch (e) {
-      console.error('Verify failed:', e);
-      setErrorMsg("Network error");
-      setState("invalid");
-    }
+    }, 2000);
   };
 
-  const reset = () => { setCertCode(""); setOtp(""); setState("idle"); setResult(null); setErrorMsg(""); };
+  // View timer countdown
+  useEffect(() => {
+    if (state !== "verified") return;
+    const interval = setInterval(() => {
+      setViewTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setState("expired");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [state]);
+
+  const reset = () => {
+    setCertCode("");
+    setOtp("");
+    setState("idle");
+    setErrorMsg("");
+    setViewTimer(RESULT_DURATION);
+  };
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -74,17 +94,16 @@ const VerifierPortal = () => {
 
   return (
     <div className="space-y-6">
-      {/* Step 1: Enter Certificate ID */}
+      {/* Input Section */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
         className="glass-surface-elevated p-6 sm:p-8">
-
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-highlight to-highlight-secondary flex items-center justify-center shadow-lg shadow-highlight/15">
             <Search className="w-5 h-5 text-primary-foreground" />
           </div>
           <div>
             <h3 className="font-heading text-lg font-semibold">Verify Credential</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Scan QR or enter Certificate ID, then verify with student's OTP</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Scan QR code or enter Certificate ID, then verify with student's OTP</p>
           </div>
         </div>
 
@@ -94,13 +113,12 @@ const VerifierPortal = () => {
           {(state === "idle" || state === "enter-otp" || state === "searching") && (
             <motion.div key="input" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="space-y-5">
-              {/* Certificate ID input */}
               <div>
-                <label className="data-label">Step 1: Certificate ID</label>
+                <label className="data-label">Step 1: Scan or Enter Certificate ID</label>
                 <div className="flex gap-3">
                   <input type="text" value={certCode} onChange={(e) => setCertCode(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleCertSubmit()}
-                    placeholder="Enter Certificate ID (e.g. PV-2026-48050)"
+                    placeholder="e.g. PV-2026-48050"
                     disabled={state !== "idle"}
                     className="flex-1 input-mono" />
                   {state === "idle" && (
@@ -113,12 +131,11 @@ const VerifierPortal = () => {
                 </div>
               </div>
 
-              {/* OTP input - shown after cert ID */}
               {(state === "enter-otp" || state === "searching") && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                  <label className="data-label">Step 2: Student's OTP</label>
+                  <label className="data-label">Step 2: Enter Student's OTP</label>
                   <p className="text-xs text-muted-foreground mb-3">
-                    Ask the student to open their Student Portal and share their current 6-digit OTP
+                    Ask the student to open their vault and share their current 6-digit OTP
                   </p>
                   <div className="flex gap-3">
                     <input type="text" maxLength={6} value={otp}
@@ -139,7 +156,7 @@ const VerifierPortal = () => {
               <div className="data-cell flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-highlight/50 animate-pulse-glow" />
                 <p className="text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground/70">Verification:</span> Certificate ID from QR + Student's rotating OTP
+                  <span className="font-medium text-foreground/70">Security:</span> Both QR certificate ID + student's live OTP required
                 </p>
               </div>
             </motion.div>
@@ -147,9 +164,9 @@ const VerifierPortal = () => {
         </AnimatePresence>
       </motion.div>
 
-      {/* Results */}
+      {/* Verified Result Card */}
       <AnimatePresence mode="wait">
-        {state === "verified" && result && (
+        {state === "verified" && (
           <motion.div key="verified" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
             className="glass-surface-elevated p-6 sm:p-8 space-y-6">
 
@@ -160,7 +177,7 @@ const VerifierPortal = () => {
               </div>
               <div className="flex-1">
                 <h4 className="font-heading font-bold text-lg text-success">Blockchain Verified ✓</h4>
-                <p className="text-sm text-muted-foreground mt-0.5">Certificate + OTP match confirmed on Polygon</p>
+                <p className="text-sm text-muted-foreground mt-0.5">Issuer: University Official • Blockchain Status: Immutable/Confirmed</p>
               </div>
               <div className="flex items-center gap-2 text-sm font-mono">
                 <Clock className="w-4 h-4 text-warning" />
@@ -171,18 +188,21 @@ const VerifierPortal = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-3">
                 {[
-                  { icon: Building, label: "Issuing Institution", value: result.issuer },
-                  { label: "Recipient Name", value: result.name },
-                  { label: "Credential Type", value: result.degree },
-                  { icon: CalendarDays, label: "Date Issued", value: result.date },
-                  ...(result.gpa ? [{ label: "GPA", value: result.gpa }] : []),
+                  { icon: Building, label: "Issuing Institution", value: "University Official" },
+                  { label: "Recipient Name", value: MOCK_CERT.name },
+                  { label: "Credential Type", value: MOCK_CERT.degree },
+                  { icon: CalendarDays, label: "Date Issued", value: MOCK_CERT.date },
+                  { label: "GPA", value: MOCK_CERT.gpa },
+                  { label: "Blockchain Status", value: "Immutable / Confirmed", highlight: true },
                 ].map((item) => (
                   <div key={item.label} className="data-cell">
                     <div className="flex items-center gap-1.5">
-                      {'icon' in item && item.icon && <item.icon className="w-3 h-3 text-muted-foreground" />}
+                      {"icon" in item && item.icon && <item.icon className="w-3 h-3 text-muted-foreground" />}
                       <p className="data-label !mb-0">{item.label}</p>
                     </div>
-                    <p className="data-value mt-1.5">{item.value}</p>
+                    <p className={`mt-1.5 ${"highlight" in item && item.highlight ? "data-value-highlight" : "data-value"}`}>
+                      {item.value}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -193,30 +213,53 @@ const VerifierPortal = () => {
                     <Hash className="w-3 h-3 text-muted-foreground" />
                     <p className="data-label !mb-0">Transaction Hash</p>
                   </div>
-                  <p className="font-mono text-xs text-highlight/70 break-all leading-relaxed">{result.txHash}</p>
+                  <p className="font-mono text-xs text-highlight/70 break-all leading-relaxed">{MOCK_CERT.txHash}</p>
+                  <a href={`https://amoy.polygonscan.com/tx/${MOCK_CERT.txHash}`} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 mt-2 text-xs text-highlight/70 hover:text-highlight transition-colors">
+                    <ExternalLink className="w-3 h-3" /> View on PolygonScan
+                  </a>
                 </div>
-                {result.blockNumber && (
-                  <div className="data-cell">
-                    <p className="data-label">Block Number</p>
-                    <p className="data-value-highlight">{result.blockNumber.toLocaleString()}</p>
-                  </div>
-                )}
+                <div className="data-cell">
+                  <p className="data-label">Block Number</p>
+                  <p className="data-value-highlight">{MOCK_CERT.blockNumber.toLocaleString()}</p>
+                </div>
                 <div className="data-cell flex items-center justify-center py-6">
                   <div className="p-4 rounded-xl bg-background/50 border border-border/30">
-                    <QRCodeSVG value={`proofvault://verify/${result.certificateId}`}
-                      size={120} bgColor="transparent" fgColor="hsl(210, 100%, 56%)" level="M" />
+                    <QRCodeSVG value={`proofvault://verify/${MOCK_CERT.certificateId}`}
+                      size={120} bgColor="transparent" fgColor="hsl(160, 72%, 42%)" level="M" />
                   </div>
                 </div>
               </div>
             </div>
 
             <button onClick={reset} className="w-full py-3 btn-ghost flex items-center justify-center gap-2">
-              <RotateCcw className="w-4 h-4" />
-              Verify Another Credential
+              <RotateCcw className="w-4 h-4" /> Verify Another Credential
             </button>
           </motion.div>
         )}
 
+        {/* Expired Warning */}
+        {state === "expired" && (
+          <motion.div key="expired" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            className="glass-surface-elevated p-6 sm:p-8 space-y-5">
+            <div className="flex items-center gap-4 p-5 rounded-xl bg-destructive/6 border border-destructive/15">
+              <div className="w-12 h-12 rounded-xl bg-destructive/15 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-6 h-6 text-destructive" />
+              </div>
+              <div>
+                <h4 className="font-heading font-bold text-lg text-destructive">Access Expired</h4>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  The 30-minute verification window has closed. Request a new code from the student.
+                </p>
+              </div>
+            </div>
+            <button onClick={reset} className="w-full py-3 btn-ghost flex items-center justify-center gap-2">
+              <RotateCcw className="w-4 h-4" /> Start New Verification
+            </button>
+          </motion.div>
+        )}
+
+        {/* Invalid */}
         {state === "invalid" && (
           <motion.div key="invalid" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
             className="glass-surface-elevated p-6 sm:p-8 space-y-5">
@@ -226,14 +269,11 @@ const VerifierPortal = () => {
               </div>
               <div>
                 <h4 className="font-heading font-bold text-lg text-destructive">Verification Failed</h4>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  {errorMsg || "The certificate ID and OTP combination could not be verified"}
-                </p>
+                <p className="text-sm text-muted-foreground mt-0.5">{errorMsg || "Could not verify credential"}</p>
               </div>
             </div>
             <button onClick={reset} className="w-full py-3 btn-ghost flex items-center justify-center gap-2">
-              <RotateCcw className="w-4 h-4" />
-              Try Again
+              <RotateCcw className="w-4 h-4" /> Try Again
             </button>
           </motion.div>
         )}
