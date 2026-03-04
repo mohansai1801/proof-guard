@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Shield, GraduationCap, Search, Layers, Activity } from "lucide-react";
+import { Shield, GraduationCap, Search, Layers, Activity, FileDown } from "lucide-react";
 import logoImg from "@/assets/Proof_Vault.png";
 import UniversityAdmin from "@/components/UniversityAdmin";
 import StudentView from "@/components/StudentView";
 import VerifierPortal from "@/components/VerifierPortal";
+import CertificateGenerator from "@/components/CertificateGenerator";
 
-type Tab = "admin" | "student" | "verifier";
+type Tab = "admin" | "student" | "verifier" | "generate";
 
 const tabs: { id: Tab; label: string; shortLabel: string; icon: React.ElementType; desc: string }[] = [
   { id: "admin", label: "University Admin", shortLabel: "Admin", icon: Shield, desc: "Issue & manage blockchain credentials" },
+  { id: "generate", label: "Generate Certs", shortLabel: "Generate", icon: FileDown, desc: "Bulk generate PDF certificates" },
   { id: "student", label: "Student Portal", shortLabel: "Student", icon: GraduationCap, desc: "Access & view your certificates" },
   { id: "verifier", label: "Verification", shortLabel: "Verify", icon: Search, desc: "Verify credential authenticity" },
 ];
@@ -106,6 +108,7 @@ const Index = () => {
             className="pb-12"
           >
             {activeTab === "admin" && <UniversityAdmin />}
+            {activeTab === "generate" && <CertificateGenerator />}
             {activeTab === "student" && <StudentView />}
             {activeTab === "verifier" && <VerifierPortal />}
           </motion.main>
