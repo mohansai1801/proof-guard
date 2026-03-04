@@ -10,6 +10,12 @@ type VerifyState = "idle" | "enter-otp" | "searching" | "verified" | "invalid" |
 
 const RESULT_DURATION = 30 * 60;
 
+const normalizeCertificateId = (input: string) => {
+  const raw = input.trim();
+  const extracted = raw.match(/PV-\d{4}-\d{5}/i)?.[0] ?? raw;
+  return extracted.replace(/\s+/g, "").toUpperCase();
+};
+
 const VerifierPortal = () => {
   const [certCode, setCertCode] = useState("");
   const [otp, setOtp] = useState("");
@@ -19,9 +25,11 @@ const VerifierPortal = () => {
   const [verifiedCert, setVerifiedCert] = useState<MockCertificate | null>(null);
 
   const handleCertSubmit = () => {
-    if (!certCode.trim()) return;
+    const normalizedCertId = normalizeCertificateId(certCode);
+    if (!normalizedCertId) return;
 
-    const cert = getCertByCertificateId(certCode.trim());
+    setCertCode(normalizedCertId);
+    const cert = getCertByCertificateId(normalizedCertId);
     if (!cert) {
       setErrorMsg("No matching credential found on the Polygon ledger");
       setState("invalid");
@@ -43,7 +51,8 @@ const VerifierPortal = () => {
     setErrorMsg("");
 
     setTimeout(() => {
-      const cert = getCertByCertificateId(certCode.trim());
+      const normalizedCertId = normalizeCertificateId(certCode);
+      const cert = getCertByCertificateId(normalizedCertId);
       if (!cert) {
         setErrorMsg("No matching credential found");
         setState("invalid");
