@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Shield, GraduationCap, Search, Layers, Activity, FileDown } from "lucide-react";
+import { Shield, GraduationCap, Search, Layers, Activity, FileDown, LogOut, User } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import logoImg from "@/assets/Proof_Vault.png";
+import { useAuth } from "@/contexts/AuthContext";
 import UniversityAdmin from "@/components/UniversityAdmin";
 import StudentView from "@/components/StudentView";
 import VerifierPortal from "@/components/VerifierPortal";
@@ -9,15 +11,27 @@ import CertificateGenerator from "@/components/CertificateGenerator";
 
 type Tab = "admin" | "student" | "verifier" | "generate";
 
-const tabs: { id: Tab; label: string; shortLabel: string; icon: React.ElementType; desc: string }[] = [
+const universityTabs: { id: Tab; label: string; shortLabel: string; icon: React.ElementType; desc: string }[] = [
   { id: "admin", label: "University Admin", shortLabel: "Admin", icon: Shield, desc: "Issue & manage blockchain credentials" },
   { id: "generate", label: "Generate Certs", shortLabel: "Generate", icon: FileDown, desc: "Bulk generate PDF certificates" },
+];
+
+const publicTabs: { id: Tab; label: string; shortLabel: string; icon: React.ElementType; desc: string }[] = [
   { id: "student", label: "Student Portal", shortLabel: "Student", icon: GraduationCap, desc: "Access & view your certificates" },
   { id: "verifier", label: "Verification", shortLabel: "Verify", icon: Search, desc: "Verify credential authenticity" },
 ];
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState<Tab>("admin");
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<Tab>(user ? "admin" : "student");
+
+  const tabs = user ? [...universityTabs, ...publicTabs] : publicTabs;
+
+  // If tab is admin-only and user not logged in, switch
+  if (!user && (activeTab === "admin" || activeTab === "generate")) {
+    setActiveTab("student");
+  }
 
   return (
     <div className="min-h-screen bg-background relative">
@@ -41,15 +55,31 @@ const Index = () => {
             <img src={logoImg} alt="Proof Vault" className="h-12 sm:h-14 object-contain" />
           </div>
 
-          <div className="hidden sm:flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl glass-surface text-xs text-muted-foreground">
-              <Activity className="w-3.5 h-3.5 text-success" />
-              <span className="font-mono">Polygon Network</span>
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-3">
+              <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl glass-surface text-xs text-muted-foreground">
+                <Activity className="w-3.5 h-3.5 text-success" />
+                <span className="font-mono">Polygon Network</span>
+              </div>
+              <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl glass-surface">
+                <div className="w-2 h-2 rounded-full bg-success animate-pulse-glow" />
+                <span className="text-xs text-muted-foreground font-mono">Connected</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl glass-surface">
-              <div className="w-2 h-2 rounded-full bg-success animate-pulse-glow" />
-              <span className="text-xs text-muted-foreground font-mono">Connected</span>
-            </div>
+
+            {user ? (
+              <button onClick={signOut}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl glass-surface text-xs text-muted-foreground hover:text-foreground transition-colors">
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Sign Out</span>
+              </button>
+            ) : (
+              <button onClick={() => navigate("/auth")}
+                className="flex items-center gap-2 px-4 py-2 btn-primary text-xs">
+                <User className="w-3.5 h-3.5" />
+                <span>University Login</span>
+              </button>
+            )}
           </div>
         </motion.header>
 
@@ -78,9 +108,7 @@ const Index = () => {
                 >
                   <tab.icon className={`w-4 h-4 flex-shrink-0 transition-colors ${isActive ? "text-highlight" : ""}`} />
                   <div className="hidden sm:block min-w-0">
-                    <p className={`text-sm font-semibold truncate ${isActive ? "" : ""}`}>
-                      {tab.label}
-                    </p>
+                    <p className="text-sm font-semibold truncate">{tab.label}</p>
                     <p className="text-[10px] text-muted-foreground mt-0.5 hidden md:block">{tab.desc}</p>
                   </div>
                   <span className="sm:hidden text-xs font-semibold">{tab.shortLabel}</span>

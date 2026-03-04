@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Unlock, Clock, FileText, ExternalLink, ShieldCheck, Loader2, Eye } from "lucide-react";
+import { Lock, Unlock, Clock, FileText, ExternalLink, ShieldCheck, Loader2, Eye, Key, Copy } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { generateOTP, getOTPTimeRemaining } from "@/lib/otp";
 
 const TIMER_DURATION = 30 * 60;
 
@@ -17,15 +18,19 @@ interface CertificateData {
   ipfsUrl: string | null;
   txHash: string | null;
   blockNumber: number | null;
+  authCode: string;
 }
 
 const StudentView = () => {
+  const [certId, setCertId] = useState("");
   const [code, setCode] = useState("");
   const [unlocked, setUnlocked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIMER_DURATION);
   const [error, setError] = useState(false);
   const [certificate, setCertificate] = useState<CertificateData | null>(null);
+  const [currentOTP, setCurrentOTP] = useState("");
+  const [otpTimeLeft, setOtpTimeLeft] = useState(0);
 
   const handleSubmit = async () => {
     if (code.length !== 6) return;
@@ -37,7 +42,7 @@ const StudentView = () => {
       });
       if (fnError) throw fnError;
       if (data.success) {
-        setCertificate(data.certificate);
+        setCertificate({ ...data.certificate, authCode: code });
         setUnlocked(true);
         setTimeLeft(TIMER_DURATION);
         toast({ title: "Access Granted", description: "Certificate unlocked successfully" });
@@ -57,10 +62,13 @@ const StudentView = () => {
   const lockCertificate = useCallback(() => {
     setUnlocked(false);
     setCode("");
+    setCertId("");
     setCertificate(null);
     setTimeLeft(TIMER_DURATION);
+    setCurrentOTP("");
   }, []);
 
+  // Access timer
   useEffect(() => {
     if (!unlocked) return;
     const interval = setInterval(() => {
@@ -72,6 +80,19 @@ const StudentView = () => {
     return () => clearInterval(interval);
   }, [unlocked, lockCertificate]);
 
+  // OTP rotation
+  useEffect(() => {
+    if (!unlocked || !certificate) return;
+    const updateOTP = () => {
+      const otp = generateOTP(certificate.certificateId, certificate.authCode);
+      setCurrentOTP(otp);
+      setOtpTimeLeft(getOTPTimeRemaining());
+    };
+    updateOTP();
+    const interval = setInterval(updateOTP, 1000);
+    return () => clearInterval(interval);
+  }, [unlocked, certificate]);
+
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
@@ -79,6 +100,12 @@ const StudentView = () => {
   };
 
   const timerPercent = (timeLeft / TIMER_DURATION) * 100;
+  const otpPercent = (otpTimeLeft / 300) * 100;
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: `${label} copied!` });
+  };
 
   return (
     <div className="space-y-6">
@@ -96,10 +123,10 @@ const StudentView = () => {
           </div>
           <div>
             <h3 className="font-heading text-lg font-semibold">
-              {unlocked ? "Access Granted" : "Authenticate"}
+              {unlocked ? "Access Granted" : "Student Authentication"}
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {unlocked ? "Your certificate is unlocked for a limited time" : "Enter your 6-digit code to view your certificate"}
+              {unlocked ? "Your certificate is unlocked" : "Enter your 6-digit auth code to view your certificate & OTP"}
             </p>
           </div>
         </div>
@@ -154,18 +181,56 @@ const StudentView = () => {
                 </button>
               </div>
             </div>
-            {/* Timer bar */}
             <div className="w-full h-1 rounded-full bg-muted overflow-hidden">
-              <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-success to-success/50"
-                initial={{ width: "100%" }}
-                animate={{ width: `${timerPercent}%` }}
-                transition={{ duration: 1 }}
-              />
+              <motion.div className="h-full rounded-full bg-gradient-to-r from-success to-success/50"
+                initial={{ width: "100%" }} animate={{ width: `${timerPercent}%` }} transition={{ duration: 1 }} />
             </div>
           </div>
         )}
       </motion.div>
+
+      {/* OTP Card - only visible when unlocked */}
+      {unlocked && certificate && (
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+          className="glass-surface-elevated p-6 sm:p-8">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-warning/15 to-warning/5 border border-warning/20 flex items-center justify-center">
+              <Key className="w-5 h-5 text-warning" />
+            </div>
+            <div>
+              <h3 className="font-heading text-lg font-semibold">Verification OTP</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Share this code with the verifier when asked</p>
+            </div>
+          </div>
+
+          <div className="divider-gradient mb-5" />
+
+          <div className="text-center space-y-4">
+            <div className="flex items-center justify-center gap-3">
+              <p className="font-mono text-4xl tracking-[0.6em] text-warning font-bold">{currentOTP}</p>
+              <button onClick={() => copyToClipboard(currentOTP, "OTP")}
+                className="p-2 rounded-lg hover:bg-warning/10 transition-colors">
+                <Copy className="w-4 h-4 text-warning/70" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-center gap-2 text-sm">
+                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="font-mono text-muted-foreground">Refreshes in {formatTime(otpTimeLeft)}</span>
+              </div>
+              <div className="w-48 mx-auto h-1 rounded-full bg-muted overflow-hidden">
+                <motion.div className="h-full rounded-full bg-gradient-to-r from-warning to-warning/50"
+                  animate={{ width: `${otpPercent}%` }} transition={{ duration: 1 }} />
+              </div>
+            </div>
+
+            <p className="text-[11px] text-muted-foreground">
+              This OTP changes every 5 minutes. The verifier will need this code along with your certificate QR.
+            </p>
+          </div>
+        </motion.div>
+      )}
 
       {/* Certificate Card */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
@@ -189,7 +254,6 @@ const StudentView = () => {
           <div className="divider-gradient mb-6" />
 
           <div className="space-y-4">
-            {/* Credential header */}
             <div className="text-center py-3">
               <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-mono">Polygon Blockchain Credential</p>
             </div>
