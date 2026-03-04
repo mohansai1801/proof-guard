@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Shield, GraduationCap, Search, Layers, Activity } from "lucide-react";
+import { Shield, GraduationCap, Search, Layers, Activity, FileDown } from "lucide-react";
 import logoImg from "@/assets/Proof_Vault.png";
 import UniversityAdmin from "@/components/UniversityAdmin";
 import StudentView from "@/components/StudentView";
 import VerifierPortal from "@/components/VerifierPortal";
+import CertificateGenerator from "@/components/CertificateGenerator";
 
 type Tab = "admin" | "student" | "verifier";
 
