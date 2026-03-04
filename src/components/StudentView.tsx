@@ -35,14 +35,11 @@ const StudentView = () => {
     return subscribe(update);
   }, [loggedIn, studentId]);
 
-  // When a certificate is selected, immediately start session + OTP
+  // When a certificate is selected, immediately start session (do NOT end on unmount — session must persist for verifier)
   useEffect(() => {
     if (!selectedCert) return;
     startSession(selectedCert.certificateId);
     setTimeLeft(TIMER_DURATION);
-    return () => {
-      endSession(selectedCert.certificateId);
-    };
   }, [selectedCert]);
 
   // 30-minute countdown
