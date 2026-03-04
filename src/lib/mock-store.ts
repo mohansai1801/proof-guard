@@ -91,7 +91,8 @@ export function getCertsByStudentId(studentId: string): MockCertificate[] {
 }
 
 export function getCertByCertificateId(certId: string): MockCertificate | undefined {
-  return certificates.find((c) => c.certificateId === certId);
+  const normalizedInput = certId.trim().replace(/\s+/g, "").toUpperCase();
+  return certificates.find((c) => c.certificateId.toUpperCase() === normalizedInput);
 }
 
 export function validateStudentLogin(studentId: string, passcode: string): boolean {
